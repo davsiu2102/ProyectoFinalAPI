@@ -1,91 +1,79 @@
-# configuración de FastAPI con SQLModel para manejar una base de datos SQLite dentro de este mismo archivo
-
 from __future__ import annotations
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Optional
-from sqlmodel import SQLModel, Field, Relationship
+from fastapi import FastAPI
+from sqlmodel import SQLModel, Field
 from datetime import date
 from enum import Enum
 
-app = FastAPI() # instanciar FastAPI
+app = FastAPI()
 
 # --------------------------
 # OBJETOS BASE (INTERNOS)
 # --------------------------
 
-# clase de sexo
 class Sexo(str, Enum):
     masculino = "masculino"
     femenino = "femenino"
     otro = "otro"
 
-# clase base de paciente
-class PacienteBase (SQLModel):
+class PacienteBase(SQLModel):
     sNombre: str
     sApellido: str
     dFechaNacimiento: date
     eSexo: Sexo
 
-# clase base de alergia
-class AlergiaBase (SQLModel):
+class AlergiaBase(SQLModel):
     sTitulo: str
-    sDescripcion: str | None = None # nulleable
+    sDescripcion: str | None = Field(default=None, nullable=True)
 
-class EnfermedadBase (SQLModel):
+class EnfermedadBase(SQLModel):
     sTitulo: str
-    sDescripcion: str | None = None
+    sDescripcion: str | None = Field(default=None, nullable=True)
 
+class Usuario(SQLModel, table=True):
+    usuarioID: int | None = Field(default=None, primary_key=True)
+    username: str = Field(unique=True, index=True)
+    email: str = Field(unique=True, index=True)
+    hashed_password: str
+    activo: bool = Field(default=True)
+    
 # --------------------------
 # TABLAS LINK (MUCHOS A MUCHOS)
 # --------------------------
 
-# objetos de tabla muchos a muchos paciente-alergia
-class PacienteAlergiaLink (SQLModel, table=True):
-    pacienteID: int | None = Field(default=None, foreign_key="paciente.pacienteID", primary_key=True)
-    alergiaID: int | None = Field(default=None, foreign_key="alergia.alergiaID", primary_key=True)
+class PacienteAlergiaLink(SQLModel, table=True):
+    pacienteID: int = Field(foreign_key="paciente.pacienteID", primary_key=True)
+    alergiaID: int = Field(foreign_key="alergia.alergiaID", primary_key=True)
 
-# objetos de tabla muchos a muchos paciente-enfermedad
-class PacienteEnfermedadLink (SQLModel, table=True):
-    pacienteID: int | None = Field(default=None, foreign_key="paciente.pacienteID", primary_key=True)
-    enfermedadID: int | None = Field(default=None, foreign_key="enfermedad.enfermedadID", primary_key=True)
+class PacienteEnfermedadLink(SQLModel, table=True):
+    pacienteID: int = Field(foreign_key="paciente.pacienteID", primary_key=True)
+    enfermedadID: int = Field(foreign_key="enfermedad.enfermedadID", primary_key=True)
 
 # --------------------------
-# TABLAS PRINCIPALES
+# TABLAS PRINCIPALES (SIN RELACIONES)
 # --------------------------
 
-# objetos de la tabla SQL de pacientes
-class Paciente (PacienteBase, table=True):
-    pacienteID: int = Field(default=None, primary_key=True)
+class Paciente(PacienteBase, table=True):
+    pacienteID: int | None = Field(default=None, primary_key=True)
 
-    # relación con alergias lógica interna: no crea una columna en la tabla de pacientes sino que SQLModel generará las filas correspondientes en la tabla link
-    alergias: list["Alergia"] | None = Relationship(
-        back_populates="pacientes",
-        link_model=PacienteAlergiaLink
-        )
-    
-    # relación con enfermedades
-    enfermedades: list["Enfermedad"] | None = Relationship(
-        back_populates="pacientes",
-        link_model=PacienteEnfermedadLink
-        )
+class Alergia(AlergiaBase, table=True):
+    alergiaID: int | None = Field(default=None, primary_key=True)
 
-# objetos de la tabla SQL de alergias
-class Alergia (AlergiaBase, table=True):
-    alergiaID: int = Field(default=None, primary_key=True)
+class Enfermedad(EnfermedadBase, table=True):
+    enfermedadID: int | None = Field(default=None, primary_key=True)
 
-    # relación con pacientes
-    pacientes: list["Paciente"] | None = Relationship(
-        back_populates="alergias",
-        link_model=PacienteAlergiaLink
-    )
+# --------------------------
+# ESQUEMAS DE CREACIÓN
+# --------------------------
 
-# objetos de la tabla SQL de enfermedades
-class Enfermedad (EnfermedadBase, table=True):
-    enfermedadID: int = Field(default=None, primary_key=True)
+class PacienteCreate(PacienteBase):
+    alergias: list[AlergiaBase] | None = None
+    enfermedades: list[EnfermedadBase] | None = None
 
-    # relación con pacientes
-    pacientes: list["Paciente"] | None = Relationship(
-        back_populates="enfermedades",
-        link_model=PacienteEnfermedadLink
-    )
+# --------------------------
+# OBJETO DE RESPUESTA
+# --------------------------
+
+class PacienteResponse(PacienteBase):
+    pacienteID: int
+    alergias: list[AlergiaBase] = []
+    enfermedades: list[EnfermedadBase] = []
